@@ -17,8 +17,8 @@ class GGNN(nn.Module):
                                      bias=False)
         self.linear_H_out = nn.Linear(self.emb_size, self.emb_size,
                                       bias=False)
-        self.bias_in = nn.Parameter(torch.Tensor(self.emb_size))
-        self.bias_out = nn.Parameter(torch.Tensor(self.emb_size))
+        self.bias_in = nn.Parameter(torch.Tensor(self.emb_size * 2))
+        self.bias_out = nn.Parameter(torch.Tensor(self.emb_size * 2))
 
     def forward(self, A, X):
         A_in, A_out = torch.chunk(A, chunks=2, dim=-1)
@@ -35,7 +35,7 @@ class S_ATT(nn.Module):
         self.linear_q = nn.Linear(2 * self.emb_size, 2 * self.emb_size)
         self.drop_out = drop_out
         self.scale = math.sqrt(self.emb_size * 2)
-        self.linear_alpha = nn.Linear(self.emb_size, 1)
+
         self.ffn = nn.Sequential(nn.Linear(2 * self.emb_size, 2 * self.emb_size),
                                  nn.ReLU(),
                                  nn.Linear(2 * self.emb_size, 2 * self.emb_size),
@@ -50,7 +50,7 @@ class S_ATT(nn.Module):
         # 这里舍弃掉了序列式的注意
         attention_score = torch.matmul(q, k.transpose(1, 2)) / self.scale
         # alpha
-        alpha = torch.sigmoid(self.linear_alpha(X_target_plus[:, -1, :])) + 1  # [1, 2]
+        # [1, 2]
         attention_score = entmax_bisect(attention_score, alpha=alpha, dim=-1)
         attention_result = torch.matmul(attention_score, v)
         C_hat = self.layer_norm(self.ffn(attention_result) + attention_result)
@@ -71,7 +71,26 @@ class TargetEnhance(nn.Module):
         Sim = F.cosine_similarity(C_last, C_target)
         threshold = self.gamma * torch.mean(torch.sum(Sim,0))
         condition = (Sim - threshold) > 0
-         torch.where(condition, self.linear_c(torch.concat([C_last, C_target], dim=-1)), C_target)
+        positive = self.linear_c(torch.concat(C_target, C_last))
+        C_target = torch.where(condition, positive, C_target)
+        return C_target
+
+
+class G_ATT(nn.Module):
+    def __init__(self, emb_size, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.emb_size = emb_size
+        self.linear_Wg1 = nn.Linear(self.emb_size * 2, self.emb_size * 2, bias=False)
+        self.linear_Wg2 = nn.Linear(self.emb_size * 2, self.emb_size * 2, bias=False)
+        self.linear_Wg0 = nn.Linear(self.emb_size * 2, self.emb_size * 2, bias=False)
+        self.bias_alpha = nn.Parameter(torch.Tensor(self.emb_size * 2))
+
+    def forward(self, C_target, C, X):
+        q = C_target
+        k = C
+        v = X
+        attention_score = self.linear_Wg0(torch.relu(self.linear_Wg1(k) + self.linear_Wg2(v) + self.bias_alpha))
+        entmax_bisect(attention_score, alpha=, dim=-1)
 
 
 class TASI_GNN(nn.Module):
@@ -83,3 +102,8 @@ class TASI_GNN(nn.Module):
         self.ggnn_layer = GGNN(self.emb_size)
         self.item_embedding = nn.Embedding(self.item_num, self.emb_size, padding_idx=0, max_norm=1.5)
         self.position_embedding = nn.Embedding(self.max_len, self.emb_size, max_norm=1.5)
+        self.linear_alpha = nn.Linear(self.emb_size, 1)
+
+
+    def forward(self):
+        alpha = torch.sigmoid(self.linear_alpha(X_target_plus[:, -1, :])) + 1
