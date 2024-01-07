@@ -24,8 +24,8 @@ parser.add_argument('--emb_size', type=int, default=100, help='hidden state size
 parser.add_argument('--dropout', type=float, default=0.2)
 parser.add_argument('--epoch', type=int, default=30, help='the number of epochs to train for')
 parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
-parser.add_argument('--lr_dc', type=float, default=0.5, help='learning rate decay rate')
-parser.add_argument('--lr_dc_step', type=int, default=4, help='the number of steps after which the learning rate decay')
+parser.add_argument('--lr_dc', type=float, default=0.1, help='learning rate decay rate')
+parser.add_argument('--lr_dc_step', type=int, default=3, help='the number of steps after which the learning rate decay')
 parser.add_argument('--l2', type=float, default=1e-5, help='l2 penalty')
 parser.add_argument('--patience', type=int, default=3, help='the number of epoch to wait before early stop ')
 parser.add_argument('--valid_portion', type=float, default=0.1,
@@ -33,9 +33,9 @@ parser.add_argument('--valid_portion', type=float, default=0.1,
 parser.add_argument('--log_file', default='logs/', help='log dir path')
 parser.add_argument('--shuffle', default=True)
 parser.add_argument('--tau', type=float, default=0.07)
-parser.add_argument('--gamma', type=float, default=0.5)
-parser.add_argument('--theta', type=float, default=0.5)
-parser.add_argument('--omega', type=float, default=0.5)
+parser.add_argument('--gamma', type=float, default=1.7)
+parser.add_argument('--theta', type=float, default=1.0)
+parser.add_argument('--omega', type=float, default=1.7)
 
 opt = parser.parse_args()
 
@@ -65,7 +65,7 @@ def main():
     test_dataloader = DataLoader(test_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=2)
 
     # model
-    tasi_gnn = TASI_GNN(emb_size=opt.emb_size, item_num=item_num, max_len=train_dataset.max_length, drop_out=opt.dropout,
+    tasi_gnn = TASI_GNN(emb_size=opt.emb_size, item_num=item_num, max_len=train_dataset.unique_max_length, drop_out=opt.dropout,
                         gamma=opt.gamma, theta=opt.theta, top_k=int(opt.batch_size * 0.01), omega=opt.omega)
     # tasi_gnn.compile()  (pytorch >= 2.0 and run in linux)  编译加速
     tasi_gnn.to(device=device)
@@ -105,12 +105,14 @@ def model_train(model, trainDataloader, valDataloader, loss_fn, optimizer, epoch
         with tqdm(total=len(trainDataloader), desc='train: ') as tbar:
             display_dict = {'loss': 0.0,
                             'avg_loss': 0.0}
-            for session, label, mask in trainDataloader:
-                session = session.to(device)
+            for alias_index, A, item, label, mask in trainDataloader:
+                alias_index = alias_index.to(device)
+                A = A.to(device)
+                item = item.to(device)
                 label = label.to(device)
                 mask = mask.to(device)
                 optimizer.zero_grad()
-                score = model(session, mask)
+                score = model(alias_index, A, item, mask)
                 loss = loss_fn(score, label)
                 loss.backward()
                 optimizer.step()
@@ -128,7 +130,7 @@ def model_train(model, trainDataloader, valDataloader, loss_fn, optimizer, epoch
         with torch.no_grad():
             display_dict = {'P@20': 0.0, 'MRR@20': 0.0}
             with tqdm(total=len(valDataloader), postfix={}, desc='test: ') as tbar:
-                for session, label, mask in valDataloader:
+                for alias_index, A, item, label, mask in valDataloader:
                     session = session.to(device)
                     label = label.to(device)
                     mask = mask.to(device)

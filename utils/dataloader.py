@@ -31,7 +31,8 @@ class DataSet(Dataset):
                           torch.zeros(self.max_length - len(self.data[index]), dtype=torch.float32)], dim=0)
         # build graph
         unique_node, alias_index = torch.unique(data, return_inverse=True)
-        item = torch.concat([unique_node, torch.zeros(self.unique_max_length - unique_node.shape[0])], dim=-1)
+        item = torch.concat(
+            [unique_node, torch.zeros(self.unique_max_length - unique_node.shape[0], dtype=torch.int64)], dim=-1)
         A = torch.zeros((self.unique_max_length, self.unique_max_length), dtype=torch.float32)
         for i in range(data.shape[0] - 1):  # 杂糅了0进去
             if data[i + 1] == 0:
