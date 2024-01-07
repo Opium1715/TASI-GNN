@@ -19,10 +19,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', default='diginetica',
                     help='dataset name: diginetica/yoochoose1_4/yoochoose1_64')
 parser.add_argument('--random_seed', default=2023, help='random_seed')
-parser.add_argument('--batch_size', type=int, default=128, help='input batch size')
+parser.add_argument('--batch_size', type=int, default=512, help='input batch size')
 parser.add_argument('--emb_size', type=int, default=100, help='hidden state size')
 parser.add_argument('--dropout', type=float, default=0.2)
-parser.add_argument('--dropout_tra', type=float, default=0.5)
 parser.add_argument('--epoch', type=int, default=30, help='the number of epochs to train for')
 parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
 parser.add_argument('--lr_dc', type=float, default=0.5, help='learning rate decay rate')
@@ -33,10 +32,10 @@ parser.add_argument('--valid_portion', type=float, default=0.1,
                     help='split the portion of training set as validation set')
 parser.add_argument('--log_file', default='logs/', help='log dir path')
 parser.add_argument('--shuffle', default=True)
-parser.add_argument('--head_nums', type=int, default=2)
-parser.add_argument('--layers', type=int, default=2)
-parser.add_argument('--mode', default='tra')
 parser.add_argument('--tau', type=float, default=0.07)
+parser.add_argument('--gamma', type=float, default=0.5)
+parser.add_argument('--theta', type=float, default=0.5)
+parser.add_argument('--omega', type=float, default=0.5)
 
 opt = parser.parse_args()
 
@@ -66,7 +65,8 @@ def main():
     test_dataloader = DataLoader(test_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=2)
 
     # model
-    tasi_gnn = TASI_GNN()
+    tasi_gnn = TASI_GNN(emb_size=opt.emb_size, item_num=item_num, max_len=train_dataset.max_length, drop_out=opt.dropout,
+                        gamma=opt.gamma, theta=opt.theta, top_k=int(opt.batch_size * 0.01), omega=opt.omega)
     # tasi_gnn.compile()  (pytorch >= 2.0 and run in linux)  编译加速
     tasi_gnn.to(device=device)
     adam = torch.optim.Adam(tasi_gnn.parameters(), lr=opt.lr, weight_decay=opt.l2)
