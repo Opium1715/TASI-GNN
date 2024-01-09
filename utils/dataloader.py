@@ -34,7 +34,7 @@ class DataSet(Dataset):
         item = torch.concat(
             [unique_node, torch.zeros(self.unique_max_length - unique_node.shape[0], dtype=torch.int64)], dim=-1)
         A = torch.zeros((self.unique_max_length, self.unique_max_length), dtype=torch.float32)
-        for i in range(data.shape[0] - 1):  # 杂糅了0进去
+        for i in range(data.shape[0] - 1):
             if data[i + 1] == 0:
                 break
             u = torch.where(item == data[i])[0][0]
@@ -45,7 +45,7 @@ class DataSet(Dataset):
         A_in = torch.divide(A, A_in_clip)
         A_out_sum = torch.sum(A, 1)
         A_out_clip = torch.clip(A_out_sum, 1)
-        A_out = torch.divide(A.transpose(1, 0), A_out_clip)  # 转置存疑
+        A_out = torch.divide(A.transpose(1, 0), A_out_clip)
         A = torch.concat([A_in, A_out], 0).transpose(1, 0)
         return alias_index, A, item, label, mask
 
