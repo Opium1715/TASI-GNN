@@ -23,7 +23,7 @@ parser.add_argument('--batch_size', type=int, default=512, help='input batch siz
 parser.add_argument('--emb_size', type=int, default=100, help='hidden state size')
 parser.add_argument('--dropout', type=float, default=0.2)
 parser.add_argument('--epoch', type=int, default=30, help='the number of epochs to train for')
-parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
+parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
 parser.add_argument('--lr_dc', type=float, default=0.1, help='learning rate decay rate')
 parser.add_argument('--lr_dc_step', type=int, default=3, help='the number of steps after which the learning rate decay')
 parser.add_argument('--l2', type=float, default=1e-5, help='l2 penalty')
@@ -63,10 +63,13 @@ def main():
     # for data in train_dataloader:
     #     print(data)
     test_dataloader = DataLoader(test_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=2)
+    # for data in test_dataloader:
+    #     print(data)
 
     # model
-    tasi_gnn = TASI_GNN(emb_size=opt.emb_size, item_num=item_num, max_len=train_dataset.unique_max_length, drop_out=opt.dropout,
-                        gamma=opt.gamma, theta=opt.theta, top_k=int(opt.batch_size * 0.01), omega=opt.omega)
+    tasi_gnn = TASI_GNN(emb_size=opt.emb_size, item_num=item_num, max_len=train_dataset.unique_max_length,
+                        drop_out=opt.dropout,gamma=opt.gamma, theta=opt.theta, top_k=int(opt.batch_size * 0.01),
+                        omega=opt.omega, tau=opt.tau)
     # tasi_gnn.compile()  (pytorch >= 2.0 and run in linux)  编译加速
     tasi_gnn.to(device=device)
     adam = torch.optim.Adam(tasi_gnn.parameters(), lr=opt.lr, weight_decay=opt.l2)
@@ -131,10 +134,12 @@ def model_train(model, trainDataloader, valDataloader, loss_fn, optimizer, epoch
             display_dict = {'P@20': 0.0, 'MRR@20': 0.0}
             with tqdm(total=len(valDataloader), postfix={}, desc='test: ') as tbar:
                 for alias_index, A, item, label, mask in valDataloader:
-                    session = session.to(device)
+                    alias_index = alias_index.to(device)
+                    A = A.to(device)
+                    item = item.to(device)
                     label = label.to(device)
                     mask = mask.to(device)
-                    score = model(session, mask)
+                    score = model(alias_index, A, item, mask)
                     # val
                     top_k_values, top_k_indices = torch.topk(score, k=20)
                     # precision

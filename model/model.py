@@ -45,13 +45,16 @@ class S_ATT(nn.Module):
                                  nn.Linear(2 * self.emb_size, 2 * self.emb_size),
                                  nn.Dropout(self.drop_out))
         self.layer_norm = nn.LayerNorm(2 * self.emb_size, eps=1e-12)
+        self.drop_q = nn.Dropout(self.drop_out)
+        self.drop_attn = nn.Dropout(self.drop_out)
 
     def forward(self, X_target_plus, alpha):
-        q = torch.relu(self.linear_q(X_target_plus))  # q drop
+        q = self.drop_q(torch.relu(self.linear_q(X_target_plus)))  # q drop
         k = X_target_plus
         v = X_target_plus
         attention_score = torch.matmul(q, k.transpose(1, 2)) / self.scale
         attention_score = entmax_bisect(attention_score, alpha=alpha, dim=-1)
+        attention_score = self.drop_attn(attention_score)
         attention_result = torch.matmul(attention_score, v)
         C_hat = self.layer_norm(self.ffn(attention_result) + attention_result)
         target_emb = C_hat[:, -1, :]
@@ -104,16 +107,19 @@ class SimilarIntent(nn.Module):
         self.dropout = nn.Dropout(0.4)
 
     def forward(self, h):
-        Sim = F.cosine_similarity(h, h)
+        Sim = F.cosine_similarity(h.unsqueeze(0), h.unsqueeze(1), dim=-1)  # 1 512 100   512 1 100  --> 512 512
+        if h.shape[0] < self.top_k:  # 最后一批次可能小过下限
+            self.top_k = h.shape[0]
         sim_topK, indices_topK = torch.topk(Sim, k=self.top_k, dim=-1)
-        beta = torch.softmax(self.theta * sim_topK, dim=-1)
-        h_topK = h[indices_topK]
+        beta = torch.softmax(self.theta * sim_topK, dim=-1)  # 512 5
+        h_topK = h[indices_topK]  # 512 5 100
+        beta = beta.unsqueeze(-1)
         h_sim = self.dropout(torch.sum(beta * h_topK, 1))
         return h_sim
 
 
 class TASI_GNN(nn.Module):
-    def __init__(self, emb_size, item_num, max_len, drop_out, gamma, theta, top_k, omega, *args, **kwargs):
+    def __init__(self, emb_size, item_num, max_len, drop_out, gamma, theta, top_k, omega, tau, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.emb_size = emb_size
         self.item_num = item_num
@@ -121,7 +127,7 @@ class TASI_GNN(nn.Module):
         self.dropout = drop_out
         self.gamma = gamma
         self.ggnn_layer = GGNN(self.emb_size)
-        self.item_embedding = nn.Embedding(self.item_num, self.emb_size, padding_idx=0, max_norm=1.5)
+        self.item_embedding = nn.Embedding(self.item_num + 1, self.emb_size, padding_idx=0, max_norm=1.5)
         self.position_embedding = nn.Embedding(self.max_len, self.emb_size, max_norm=1.5)
         self.linear_alpha = nn.Linear(self.emb_size * 2, 1)
         self.sa_layer = S_ATT(self.emb_size, self.dropout)
@@ -130,12 +136,13 @@ class TASI_GNN(nn.Module):
         self.linear_wh = nn.Linear(self.emb_size * 4, self.emb_size)
         self.similar_intent_layer = SimilarIntent(theta, top_k)
         self.omega = omega
-        self.w = 20
+        self.tau = tau
 
     def forward(self, alias_index, A, item, mask):
         batch_size = mask.shape[0]
+        unique_len = item.shape[1]
         item_emb = self.item_embedding(item)
-        pos_emb = self.position_embedding(torch.arange(self.max_len, device='cuda', dtype=torch.int64)).unsqueeze(
+        pos_emb = self.position_embedding(torch.arange(unique_len, device='cuda', dtype=torch.int64)).unsqueeze(
             0).repeat(batch_size, 1, 1)
         X = torch.concat([item_emb, pos_emb], dim=-1)
         X = self.ggnn_layer(A, X)
@@ -167,9 +174,9 @@ class TASI_GNN(nn.Module):
         session_hidden_sim = self.similar_intent_layer(session_hidden)
 
         # predict
-        session_final = session_hidden + self.omega * session_hidden_sim
+        session_final = F.normalize(session_hidden, dim=-1) + self.omega * session_hidden_sim
         item_emb_norm = F.normalize(
             self.item_embedding(torch.arange(1, self.item_num + 1, device='cuda', dtype=torch.int64)), dim=-1)
-        scores = self.w * torch.matmul(session_final, item_emb_norm.transpose(1, 0))
+        scores = torch.matmul(session_final, item_emb_norm.transpose(1, 0))  # / self.tau
 
         return scores
