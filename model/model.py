@@ -174,7 +174,7 @@ class TASI_GNN(nn.Module):
         session_hidden_sim = self.similar_intent_layer(session_hidden)
 
         # predict
-        session_final = F.normalize(session_hidden, dim=-1) + self.omega * session_hidden_sim
+        session_final = session_hidden + self.omega * session_hidden_sim
         item_emb_norm = F.normalize(
             self.item_embedding(torch.arange(1, self.item_num + 1, device='cuda', dtype=torch.int64)), dim=-1)
         scores = torch.matmul(session_final, item_emb_norm.transpose(1, 0))  # / self.tau
