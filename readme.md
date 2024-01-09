@@ -11,10 +11,14 @@ Pytorch 2.X (version>=1.8 is compatible)<br />Python 3.10 (version>=3.9 is compa
 <a name="aRMxw"></a>
 ## [Citation](https://github.com/CRIPAC-DIG/SR-GNN/tree/e21cfa431f74c25ae6e4ae9261deefe11d1cb488#citation)
 ```
-@inproceedings{hou2022core,
-  author = {Yupeng Hou and Binbin Hu and Zhiqiang Zhang and Wayne Xin Zhao},
-  title = {CORE: Simple and Effective Session-based Recommendation within Consistent Representation Space},
-  booktitle = {{SIGIR}},
-  year = {2022}
+@article{qiao2023noise,
+  title={Noise-reducing graph neural network with intent-target co-action for session-based recommendation},
+  author={Qiao, Shutong and Zhou, Wei and Luo, Fengji and Wen, Junhao},
+  journal={Information Processing \& Management},
+  volume={60},
+  number={6},
+  pages={103517},
+  year={2023},
+  publisher={Elsevier}
 }
 ```
